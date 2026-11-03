@@ -1,0 +1,32 @@
+# macOS metadata
+.DS_Store
+._*
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Local configuration and credentials
+.env
+.env.*
+*.key
+*.pem
+keys*.json
+credentials*.json
+
+# WeChat data, snapshots, decrypted databases and indexes
+.local-export*/
+.snapshot/
+decrypted/
+xwechat_files/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Locally compiled sender
+/scripts/wxsend
