@@ -28,5 +28,26 @@ xwechat_files/
 *.sqlite3
 *.sqlite3-*
 
-# Locally compiled sender
-/scripts/wxsend
+
+# Locally compiled diagnostic / native bridge tools (wxsend is Python source)
+/scripts/wxprobe
+/scripts/native_ax_bridge
+/scripts/account_ui_observer
+/scripts/sck_probe
+
+# Exact local runtime paths (keep source fixture JSON trackable)
+/config.json
+/operation.json
+/*send-journal.json
+/scripts/config.json
+/scripts/operation.json
+/scripts/*send-journal.json
+/verification-snapshots/
+/send-operations/
+/.wechat-ui-state/
+/private/
+/diagnostics/
+/private-diagnostics/
+/.local-diagnostics/
+/contact-aliases.json
+/scripts/contact-aliases.json

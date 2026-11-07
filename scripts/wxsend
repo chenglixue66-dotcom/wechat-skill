@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""WeChat entrypoint. Real sends use the guarded native controller."""
+from pathlib import Path
+import json
+import os
+import subprocess
+import sys
+
+root = Path(__file__).resolve().parent
+python = Path.home() / "WeChatDataAnalysis/.venv/bin/python"
+# The local adapters need Python 3.10+; macOS Python 3.9 cannot run them.
+if python.is_file() and Path(sys.executable).resolve() != python.resolve():
+    os.execv(str(python), [str(python), "-B", str(Path(__file__).resolve()), *sys.argv[1:]])
+if sys.version_info < (3, 10):
+    print(json.dumps({"status": "blocked", "code": "PYTHON_3_10_REQUIRED", "send_attempts": 0}))
+    raise SystemExit(78)
+
+args = sys.argv[1:]
+# Repair acceptance and a separate concrete send authorization are required.
+if args and args[0] not in ("--help", "-h", "--self-test", "--probe", "--inspect", "--resolve", "--dry"):
+    print(json.dumps({"status": "blocked", "code": "LIVE_SEND_DISABLED", "send_attempts": 0, "writes_performed": 0}))
+    raise SystemExit(78)
+if args in (["--help"], ["-h"]) or not args:
+    print("Usage:\n"
+          "  wxsend --probe [--wait-foreground 0..30]       # legacy read-only metadata\n"
+          "  wxsend --inspect                            # native AX structure\n"
+          "  wxsend --resolve <recipient>                 # fresh contact-only lookup\n"
+          "  wxsend --dry <recipient> [--text ...]         # read-only plan; no UI\n"
+          "  wxsend --draft-check <recipient> --text ... [--operation-id ID]\n"
+          "  wxsend <recipient> --text ... --operation-id ID\n"
+          "  wxsend <recipient> --text-file BODY --operation-id ID\n"
+          "  wxsend --self-test\n"
+          "Draft-check navigates, writes and cleans an empty draft; never sends.\n"
+          "Real sends resolve/open/prepare/submit once and verify the target receipt.\n"
+          "Keep the operation ID unchanged for one request. Unsupported UI stops at its actual stage.")
+    raise SystemExit(0)
+if args == ["--self-test"]:
+    code = ("import sys,unittest; suite=unittest.defaultTestLoader.discover(sys.argv[1],pattern='test_*.py'); "
+            "assert suite.countTestCases()>0,'No tests discovered'; "
+            "result=unittest.TextTestRunner(verbosity=1).run(suite); "
+            "print('offline_tests='+str(result.testsRun)); raise SystemExit(not result.wasSuccessful())")
+    raise SystemExit(subprocess.call([sys.executable, "-B", "-c", code, str(root.parent / "tests")]))
+probe_mode = args == ["--probe"] or (
+    len(args) == 3 and args[:2] == ["--probe", "--wait-foreground"]
+    and args[2].isdigit() and int(args[2]) <= 30)
+if probe_mode:
+    probe = root / "wxprobe"
+    if probe.is_file():
+        raise SystemExit(subprocess.call([str(probe), *args[1:]]))
+    print(json.dumps({"status": "blocked", "code": "PROBE_NOT_BUILT", "send_attempts": 0}))
+    raise SystemExit(78)
+if args == ["--inspect"]:
+    raise SystemExit(subprocess.call([sys.executable, "-B", str(root / "native_backend.py"), "inspect"]))
+if args[0] == "--resolve":
+    raise SystemExit(subprocess.call([sys.executable, "-B", str(root / "contact_resolver.py"), *args[1:]]))
+if args[0] == "--dry":
+    import argparse
+    import hashlib
+    from contact_resolver import open_resolved_contact
+    parser = argparse.ArgumentParser(description="Read-only contact plan; no UI/draft writes")
+    parser.add_argument("recipient")
+    parser.add_argument("--text")
+    dry_args = parser.parse_args(args[1:])
+    try:
+        with open_resolved_contact(dry_args.recipient) as (resolution, _fresh):
+            result = {**resolution.to_public_dict(), "mode": "read_only_plan",
+                      "send_attempts": 0, "writes_performed": 0, "ui_actions": 0}
+            if dry_args.text is not None:
+                result["payload_hash"] = hashlib.sha256(dry_args.text.encode("utf8", "strict")).hexdigest()
+        status = 0
+    except Exception as error:
+        result = {"status": "blocked", "code": getattr(error, "code", "RESOLUTION_UNAVAILABLE"),
+                  "send_attempts": 0, "writes_performed": 0, "ui_actions": 0}
+        status = 78
+    print(json.dumps(result, separators=(",", ":")))
+    raise SystemExit(status)
+from wechat_automation import main
+if args[0] == "--draft-check":
+    raise SystemExit(main([*args[1:], "--dry"]))
+raise SystemExit(main(args))
